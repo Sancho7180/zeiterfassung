@@ -4,30 +4,22 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="theme-color" content="#1f4e5f">
+<meta name="theme-color" content="#cdd9e5">
 <title>Zeiterfassung</title>
 <style>
   :root {
-    --bg: #f2f4f3;
-    --surface: #ffffff;
-    --ink: #1b2a30;
-    --muted: #5d6f76;
-    --line: #d5dcdd;
-    --accent: #1f4e5f;
+    --bg: #cdd9e5;          /* helles Taubenblau */
+    --surface: #f7f9fb;
+    --ink: #000000;
+    --muted: #3b4650;
+    --line: #aebccb;
+    --accent: #2f4a63;
     --accent-ink: #ffffff;
     --warn: #a63d2f;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --bg: #12191c;
-      --surface: #1a2428;
-      --ink: #e6edef;
-      --muted: #8fa3aa;
-      --line: #2d3b41;
-      --accent: #5fb0c8;
-      --accent-ink: #0d1518;
-      --warn: #e58a7c;
-    }
+    --field: #e3e3e3;       /* helles Grau */
+    --field-ink: #c00000;   /* rote Schrift */
+    --green: #1e7a34;
+    --gold: #f0a500;        /* Mangogelb */
   }
   * { box-sizing: border-box; }
   html { -webkit-text-size-adjust: 100%; }
@@ -35,13 +27,13 @@
     margin: 0;
     background: var(--bg);
     color: var(--ink);
-    font: 16px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    font: 17px/1.45 Georgia, "Times New Roman", Times, serif;
     padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
   }
   main { max-width: 720px; margin: 0 auto; padding: 16px; }
   header { margin-bottom: 16px; }
-  .today { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.01em; }
-  .kw { color: var(--muted); margin-top: 2px; }
+  .today { font-size: 1.6rem; font-weight: 700; color: #000; }
+  .kw { color: #000; margin-top: 2px; }
   section {
     background: var(--surface);
     border: 1px solid var(--line);
@@ -58,9 +50,10 @@
     padding: 10px 12px;
     border: 1px solid var(--line);
     border-radius: 8px;
-    background: var(--bg);
-    color: var(--ink);
+    background: var(--field);
+    color: var(--field-ink);
   }
+  input::placeholder { color: #c00000; opacity: .55; }
   input:focus-visible, button:focus-visible {
     outline: 3px solid var(--accent);
     outline-offset: 1px;
@@ -103,6 +96,9 @@
   .weeknav h2 { margin: 0; }
   .weeknav div { display: flex; gap: 6px; }
   .sub { color: var(--muted); font-size: .85rem; margin: 0 0 10px; }
+  tbody tr, .entries li { font-weight: 600; }
+  tbody tr:nth-child(odd), .entries li:nth-child(odd) { color: var(--green); }
+  tbody tr:nth-child(even), .entries li:nth-child(even) { color: var(--gold); }
   .hl { background: color-mix(in srgb, var(--accent) 14%, transparent); }
 </style>
 </head>
@@ -112,22 +108,6 @@
     <div class="today" id="today"></div>
     <div class="kw" id="kw"></div>
   </header>
-
-  <section aria-labelledby="h-erfassen">
-    <h2 id="h-erfassen">Zeit erfassen</h2>
-    <div class="row">
-      <div>
-        <label for="auftrag">Betriebsauftrag</label>
-        <input id="auftrag" maxlength="10" autocomplete="off" autocapitalize="characters" spellcheck="false" inputmode="text">
-      </div>
-      <div>
-        <label for="zeit">Zeit (dezimal)</label>
-        <input id="zeit" inputmode="decimal" autocomplete="off" placeholder="z. B. 1,5">
-      </div>
-    </div>
-    <button class="primary" id="speichern" type="button">Speichern</button>
-    <p class="error" id="fehler" role="alert"></p>
-  </section>
 
   <section aria-labelledby="h-tag">
     <h2 id="h-tag">Heute</h2>
@@ -145,6 +125,21 @@
     </div>
     <p class="sub" id="wochenInfo"></p>
     <div class="scroll" id="woche"></div>
+  </section>
+  <section aria-labelledby="h-erfassen">
+    <h2 id="h-erfassen">Zeit erfassen</h2>
+    <div class="row">
+      <div>
+        <label for="auftrag">Betriebsauftrag</label>
+        <input id="auftrag" maxlength="10" autocomplete="off" autocapitalize="characters" spellcheck="false" inputmode="text">
+      </div>
+      <div>
+        <label for="zeit">Zeit (dezimal)</label>
+        <input id="zeit" inputmode="decimal" autocomplete="off" placeholder="z. B. 1,5">
+      </div>
+    </div>
+    <button class="primary" id="speichern" type="button">Speichern</button>
+    <p class="error" id="fehler" role="alert"></p>
   </section>
 </main>
 
