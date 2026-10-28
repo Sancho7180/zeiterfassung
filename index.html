@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#1f4e5f">
+<title>Zeiterfassung</title>
+<style>
+  :root {
+    --bg: #f2f4f3;
+    --surface: #ffffff;
+    --ink: #1b2a30;
+    --muted: #5d6f76;
+    --line: #d5dcdd;
+    --accent: #1f4e5f;
+    --accent-ink: #ffffff;
+    --warn: #a63d2f;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12191c;
+      --surface: #1a2428;
+      --ink: #e6edef;
+      --muted: #8fa3aa;
+      --line: #2d3b41;
+      --accent: #5fb0c8;
+      --accent-ink: #0d1518;
+      --warn: #e58a7c;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 16px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
+  }
+  main { max-width: 720px; margin: 0 auto; padding: 16px; }
+  header { margin-bottom: 16px; }
+  .today { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.01em; }
+  .kw { color: var(--muted); margin-top: 2px; }
+  section {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+  h2 { font-size: 1.05rem; margin: 0 0 12px; }
+  label { display: block; font-size: .9rem; color: var(--muted); margin-bottom: 4px; }
+  input {
+    width: 100%;
+    font: inherit;
+    font-size: 1.1rem; /* verhindert Zoom auf dem iPhone */
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--bg);
+    color: var(--ink);
+  }
+  input:focus-visible, button:focus-visible {
+    outline: 3px solid var(--accent);
+    outline-offset: 1px;
+  }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  button {
+    font: inherit;
+    cursor: pointer;
+    border-radius: 8px;
+    border: 1px solid var(--line);
+    background: var(--surface);
+    color: var(--ink);
+    padding: 10px 14px;
+  }
+  button.primary {
+    width: 100%;
+    margin-top: 14px;
+    background: var(--accent);
+    color: var(--accent-ink);
+    border-color: var(--accent);
+    font-weight: 600;
+    padding: 12px;
+  }
+  .error { color: var(--warn); min-height: 1.4em; margin: 8px 0 0; font-size: .9rem; }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  th, td { padding: 8px 6px; text-align: right; border-bottom: 1px solid var(--line); }
+  th:first-child, td:first-child { text-align: left; }
+  th { font-weight: 600; font-size: .85rem; color: var(--muted); }
+  tfoot td { font-weight: 700; border-bottom: none; border-top: 2px solid var(--line); }
+  .scroll { overflow-x: auto; }
+  .empty { color: var(--muted); margin: 0; }
+  .entries { list-style: none; margin: 14px 0 0; padding: 0; }
+  .entries li {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 8px; padding: 6px 0; border-top: 1px solid var(--line);
+    font-variant-numeric: tabular-nums;
+  }
+  .entries button { padding: 4px 10px; color: var(--warn); }
+  .weeknav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .weeknav h2 { margin: 0; }
+  .weeknav div { display: flex; gap: 6px; }
+  .sub { color: var(--muted); font-size: .85rem; margin: 0 0 10px; }
+  .hl { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div class="today" id="today"></div>
+    <div class="kw" id="kw"></div>
+  </header>
+
+  <section aria-labelledby="h-erfassen">
+    <h2 id="h-erfassen">Zeit erfassen</h2>
+    <div class="row">
+      <div>
+        <label for="auftrag">Betriebsauftrag</label>
+        <input id="auftrag" maxlength="10" autocomplete="off" autocapitalize="characters" spellcheck="false" inputmode="text">
+      </div>
+      <div>
+        <label for="zeit">Zeit (dezimal)</label>
+        <input id="zeit" inputmode="decimal" autocomplete="off" placeholder="z. B. 1,5">
+      </div>
+    </div>
+    <button class="primary" id="speichern" type="button">Speichern</button>
+    <p class="error" id="fehler" role="alert"></p>
+  </section>
+
+  <section aria-labelledby="h-tag">
+    <h2 id="h-tag">Heute</h2>
+    <div id="tag"></div>
+  </section>
+
+  <section aria-labelledby="h-woche">
+    <div class="weeknav">
+      <h2 id="h-woche">Woche</h2>
+      <div>
+        <button type="button" id="prev" aria-label="Vorherige Woche">‹</button>
+        <button type="button" id="cur">Aktuell</button>
+        <button type="button" id="next" aria-label="Nächste Woche">›</button>
+      </div>
+    </div>
+    <p class="sub" id="wochenInfo"></p>
+    <div class="scroll" id="woche"></div>
+  </section>
+</main>
+
+<script>
+(function () {
+  var KEY = "zeiterfassung.v1";
+  var TAGE = ["Mo", "Di", "Mi", "Do", "Fr"];
+  var weekOffset = 0;
+  var lastDay = null;
+
+  /* ---------- Speicher ---------- */
+  function load() {
+    try { return JSON.parse(localStorage.getItem(KEY)) || []; } catch (e) { return []; }
+  }
+  function save(list) {
+    try { localStorage.setItem(KEY, JSON.stringify(list)); } catch (e) {}
+  }
+
+  /* ---------- Datum ---------- */
+  function pad(n) { return (n < 10 ? "0" : "") + n; }
+  function dayKey(d) { return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()); }
+  function mondayOf(d) {
+    var x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    var wd = (x.getDay() + 6) % 7; // Mo=0
+    x.setDate(x.getDate() - wd);
+    return x;
+  }
+  function isoWeek(d) {
+    var x = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+    var dayNum = x.getUTCDay() || 7;
+    x.setUTCDate(x.getUTCDate() + 4 - dayNum);
+    var yearStart = new Date(Date.UTC(x.getUTCFullYear(), 0, 1));
+    return { week: Math.ceil(((x - yearStart) / 86400000 + 1) / 7), year: x.getUTCFullYear() };
+  }
+  function fmtLong(d) {
+    return d.toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+  }
+  function fmtShort(d) { return pad(d.getDate()) + "." + pad(d.getMonth() + 1) + "."; }
+
+  /* ---------- Zahlen ---------- */
+  function fmt(n) {
+    return (Math.round(n * 100) / 100).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  function parseZeit(s) {
+    s = String(s).trim().replace(",", ".");
+    if (!/^\d+(\.\d+)?$/.test(s)) return NaN;
+    return parseFloat(s);
+  }
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+
+  /* ---------- Darstellung ---------- */
+  var elToday = document.getElementById("today");
+  var elKw = document.getElementById("kw");
+  var elTag = document.getElementById("tag");
+  var elWoche = document.getElementById("woche");
+  var elInfo = document.getElementById("wochenInfo");
+  var elFehler = document.getElementById("fehler");
+
+  function renderHeader() {
+    var now = new Date();
+    elToday.textContent = fmtLong(now);
+    elKw.textContent = "Kalenderwoche " + isoWeek(now).week;
+    lastDay = dayKey(now);
+  }
+
+  function renderTag() {
+    var list = load();
+    var today = dayKey(new Date());
+    var mine = list.filter(function (e) { return e.date === today; });
+    if (!mine.length) {
+      elTag.innerHTML = '<p class="empty">Heute noch keine Zeiten erfasst.</p>';
+      return;
+    }
+    var sums = {}, order = [], total = 0;
+    mine.forEach(function (e) {
+      if (!(e.auftrag in sums)) { sums[e.auftrag] = 0; order.push(e.auftrag); }
+      sums[e.auftrag] += e.stunden;
+      total += e.stunden;
+    });
+    var h = '<table><thead><tr><th>Betriebsauftrag</th><th>Zeit</th></tr></thead><tbody>';
+    order.forEach(function (a) { h += "<tr><td>" + esc(a) + "</td><td>" + fmt(sums[a]) + "</td></tr>"; });
+    h += "</tbody><tfoot><tr><td>Summe</td><td>" + fmt(total) + "</td></tr></tfoot></table>";
+    h += '<ul class="entries">';
+    mine.forEach(function (e) {
+      h += "<li><span>" + esc(e.auftrag) + " · " + fmt(e.stunden) + '</span><button type="button" data-del="' + e.id + '" aria-label="Eintrag ' + esc(e.auftrag) + ' löschen">Löschen</button></li>';
+    });
+    h += "</ul>";
+    elTag.innerHTML = h;
+  }
+
+  function renderWoche() {
+    var list = load();
+    var base = mondayOf(new Date());
+    base.setDate(base.getDate() + weekOffset * 7);
+    var days = [];
+    for (var i = 0; i < 5; i++) {
+      var d = new Date(base.getFullYear(), base.getMonth(), base.getDate() + i);
+      days.push(d);
+    }
+    var keys = days.map(dayKey);
+    var info = isoWeek(days[0]);
+    elInfo.textContent = "KW " + info.week + " · " + fmtShort(days[0]) + " – " + fmtShort(days[4]) + days[4].getFullYear();
+
+    var rows = {}, order = [], dayTotals = [0, 0, 0, 0, 0], grand = 0;
+    list.forEach(function (e) {
+      var idx = keys.indexOf(e.date);
+      if (idx < 0) return;
+      if (!rows[e.auftrag]) { rows[e.auftrag] = [0, 0, 0, 0, 0]; order.push(e.auftrag); }
+      rows[e.auftrag][idx] += e.stunden;
+      dayTotals[idx] += e.stunden;
+      grand += e.stunden;
+    });
+    if (!order.length) {
+      elWoche.innerHTML = '<p class="empty">In dieser Woche gibt es keine Einträge.</p>';
+      return;
+    }
+    var todayKey = dayKey(new Date());
+    var h = "<table><thead><tr><th>Auftrag</th>";
+    TAGE.forEach(function (t, i) { h += '<th class="' + (keys[i] === todayKey ? "hl" : "") + '">' + t + "</th>"; });
+    h += "<th>Summe</th></tr></thead><tbody>";
+    order.forEach(function (a) {
+      var sum = 0;
+      h += "<tr><td>" + esc(a) + "</td>";
+      rows[a].forEach(function (v, i) {
+        sum += v;
+        h += '<td class="' + (keys[i] === todayKey ? "hl" : "") + '">' + (v ? fmt(v) : "–") + "</td>";
+      });
+      h += "<td><strong>" + fmt(sum) + "</strong></td></tr>";
+    });
+    h += "</tbody><tfoot><tr><td>Summe</td>";
+    dayTotals.forEach(function (v) { h += "<td>" + (v ? fmt(v) : "–") + "</td>"; });
+    h += "<td>" + fmt(grand) + "</td></tr></tfoot></table>";
+    elWoche.innerHTML = h;
+  }
+
+  function renderAll() { renderHeader(); renderTag(); renderWoche(); }
+
+  /* ---------- Aktionen ---------- */
+  document.getElementById("speichern").addEventListener("click", function () {
+    var aEl = document.getElementById("auftrag");
+    var zEl = document.getElementById("zeit");
+    var a = aEl.value.trim();
+    var z = parseZeit(zEl.value);
+    if (!a) { elFehler.textContent = "Bitte einen Betriebsauftrag eingeben (bis zu 10 Zeichen)."; aEl.focus(); return; }
+    if (isNaN(z) || z <= 0) { elFehler.textContent = "Bitte die Zeit als Dezimalzahl eingeben, z. B. 1,5."; zEl.focus(); return; }
+    if (z > 24) { elFehler.textContent = "Eine Zeit über 24 Stunden ist nicht möglich."; zEl.focus(); return; }
+    elFehler.textContent = "";
+    var list = load();
+    list.push({ id: Date.now() + "-" + Math.floor(Math.random() * 1000), date: dayKey(new Date()), auftrag: a, stunden: z });
+    save(list);
+    aEl.value = ""; zEl.value = "";
+    aEl.focus();
+    weekOffset = 0;
+    renderAll();
+  });
+
+  document.getElementById("zeit").addEventListener("keydown", function (e) {
+    if (e.key === "Enter") document.getElementById("speichern").click();
+  });
+
+  elTag.addEventListener("click", function (e) {
+    var id = e.target.getAttribute && e.target.getAttribute("data-del");
+    if (!id) return;
+    save(load().filter(function (x) { return x.id !== id; }));
+    renderAll();
+  });
+
+  document.getElementById("prev").addEventListener("click", function () { weekOffset--; renderWoche(); });
+  document.getElementById("next").addEventListener("click", function () { weekOffset++; renderWoche(); });
+  document.getElementById("cur").addEventListener("click", function () { weekOffset = 0; renderWoche(); });
+
+  /* ---------- Automatische Aktualisierung des Datums ---------- */
+  function checkDay() {
+    if (dayKey(new Date()) !== lastDay) { weekOffset = 0; renderAll(); }
+  }
+  setInterval(checkDay, 60000);
+  document.addEventListener("visibilitychange", function () { if (!document.hidden) checkDay(); });
+  window.addEventListener("focus", checkDay);
+
+  renderAll();
+})();
+</script>
+</body>
+</html>
