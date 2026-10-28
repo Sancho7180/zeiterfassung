@@ -77,6 +77,9 @@
     font-weight: 600;
     padding: 12px;
   }
+  .lblrow { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+  .lblrow label { margin: 0; }
+  .lblrow button { padding: 2px 12px; font-size: .85rem; }
   .error { color: var(--warn); min-height: 1.4em; margin: 8px 0 0; font-size: .9rem; }
   table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
   th, td { padding: 8px 6px; text-align: right; border-bottom: 1px solid var(--line); }
@@ -130,12 +133,12 @@
     <h2 id="h-erfassen">Zeit erfassen</h2>
     <div class="row">
       <div>
-        <label for="auftrag">Betriebsauftrag</label>
-        <input id="auftrag" maxlength="10" autocomplete="off" autocapitalize="characters" spellcheck="false" inputmode="text">
+        <div class="lblrow"><label for="auftrag">Betriebsauftrag</label><button type="button" id="modus" aria-label="Zur Buchstabentastatur wechseln">ABC</button></div>
+        <input id="auftrag" type="text" maxlength="10" autocomplete="off" spellcheck="false" inputmode="numeric" pattern="[0-9]*" enterkeyhint="next">
       </div>
       <div>
         <label for="zeit">Zeit (dezimal)</label>
-        <input id="zeit" inputmode="decimal" autocomplete="off" placeholder="z. B. 1,5">
+        <input id="zeit" type="text" inputmode="decimal" pattern="[0-9]*[.,]?[0-9]*" autocomplete="off" placeholder="z. B. 1,5" enterkeyhint="done">
       </div>
     </div>
     <button class="primary" id="speichern" type="button">Speichern</button>
@@ -322,6 +325,29 @@
   setInterval(checkDay, 60000);
   document.addEventListener("visibilitychange", function () { if (!document.hidden) checkDay(); });
   window.addEventListener("focus", checkDay);
+
+  /* ---------- Tastatur-Umschalter Betriebsauftrag ---------- */
+  var modusBtn = document.getElementById("modus");
+  var auftragEl = document.getElementById("auftrag");
+  var zahlenModus = true;
+  modusBtn.addEventListener("click", function () {
+    zahlenModus = !zahlenModus;
+    if (zahlenModus) {
+      auftragEl.setAttribute("inputmode", "numeric");
+      auftragEl.setAttribute("pattern", "[0-9]*");
+      auftragEl.setAttribute("autocapitalize", "off");
+      modusBtn.textContent = "ABC";
+      modusBtn.setAttribute("aria-label", "Zur Buchstabentastatur wechseln");
+    } else {
+      auftragEl.setAttribute("inputmode", "text");
+      auftragEl.removeAttribute("pattern");
+      auftragEl.setAttribute("autocapitalize", "characters");
+      modusBtn.textContent = "123";
+      modusBtn.setAttribute("aria-label", "Zur Zahlentastatur wechseln");
+    }
+    auftragEl.blur();
+    setTimeout(function () { auftragEl.focus(); }, 50);
+  });
 
   renderAll();
 })();
