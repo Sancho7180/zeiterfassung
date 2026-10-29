@@ -95,13 +95,27 @@
     font-variant-numeric: tabular-nums;
   }
   .entries button { padding: 4px 10px; color: var(--warn); }
-  .weeknav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .weeknav { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 12px; }
   .weeknav h2 { margin: 0; }
   .weeknav div { display: flex; gap: 6px; }
   .sub { color: var(--muted); font-size: .85rem; margin: 0 0 10px; }
   tbody tr, .entries li { font-weight: 600; }
   tbody tr:nth-child(odd), .entries li:nth-child(odd) { color: var(--green); }
   tbody tr:nth-child(even), .entries li:nth-child(even) { color: var(--gold); }
+  .datefield { margin-bottom: 12px; }
+  input[type="date"] { min-height: 2.9rem; text-align: left; -webkit-appearance: none; appearance: none; }
+  #datum, #datum::-webkit-datetime-edit, #datum::-webkit-datetime-edit-fields-wrapper,
+  #datum::-webkit-datetime-edit-day-field, #datum::-webkit-datetime-edit-month-field,
+  #datum::-webkit-datetime-edit-year-field, #datum::-webkit-datetime-edit-text {
+    color: var(--gold);
+    font-weight: 600;
+  }
+  [hidden] { display: none !important; }
+  #abbrechen { width: 100%; margin-top: 8px; }
+  .entries .btns { display: flex; gap: 6px; }
+  .entries button[data-edit] { color: var(--ink); }
+  th[data-date] { cursor: pointer; }
+  th.sel { box-shadow: inset 0 -3px 0 var(--accent); }
   .hl { background: color-mix(in srgb, var(--accent) 14%, transparent); }
 </style>
 </head>
@@ -113,7 +127,14 @@
   </header>
 
   <section aria-labelledby="h-tag">
-    <h2 id="h-tag">Heute</h2>
+    <div class="weeknav">
+      <h2 id="h-tag">Heute</h2>
+      <div>
+        <button type="button" id="dprev" aria-label="Vorheriger Tag">‹</button>
+        <button type="button" id="dcur">Heute</button>
+        <button type="button" id="dnext" aria-label="Nächster Tag">›</button>
+      </div>
+    </div>
     <div id="tag"></div>
   </section>
 
@@ -131,6 +152,10 @@
   </section>
   <section aria-labelledby="h-erfassen">
     <h2 id="h-erfassen">Zeit erfassen</h2>
+    <div class="datefield">
+      <label for="datum">Datum</label>
+      <input id="datum" type="date">
+    </div>
     <div class="row">
       <div>
         <div class="lblrow"><label for="auftrag">Betriebsauftrag</label><button type="button" id="modus" aria-label="Zur Buchstabentastatur wechseln">ABC</button></div>
@@ -142,6 +167,7 @@
       </div>
     </div>
     <button class="primary" id="speichern" type="button">Speichern</button>
+    <button id="abbrechen" type="button" hidden>Abbrechen</button>
     <p class="error" id="fehler" role="alert"></p>
   </section>
 </main>
@@ -150,7 +176,8 @@
 (function () {
   var KEY = "zeiterfassung.v1";
   var TAGE = ["Mo", "Di", "Mi", "Do", "Fr"];
-  var weekOffset = 0;
+  var selected = dayKey(new Date());
+  var editingId = null;
   var lastDay = null;
 
   /* ---------- Speicher ---------- */
@@ -164,6 +191,15 @@
   /* ---------- Datum ---------- */
   function pad(n) { return (n < 10 ? "0" : "") + n; }
   function dayKey(d) { return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()); }
+  function parseKey(k) {
+    var p = k.split("-");
+    return new Date(+p[0], +p[1] - 1, +p[2]);
+  }
+  function shiftKey(k, days) {
+    var d = parseKey(k);
+    d.setDate(d.getDate() + days);
+    return dayKey(d);
+  }
   function mondayOf(d) {
     var x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
     var wd = (x.getDay() + 6) % 7; // Mo=0
@@ -179,6 +215,9 @@
   }
   function fmtLong(d) {
     return d.toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+  }
+  function fmtDay(d) {
+    return d.toLocaleDateString("de-DE", { weekday: "long", day: "2-digit", month: "2-digit", year: "numeric" });
   }
   function fmtShort(d) { return pad(d.getDate()) + "." + pad(d.getMonth() + 1) + "."; }
 
@@ -197,14 +236,24 @@
     });
   }
 
-  /* ---------- Darstellung ---------- */
+  /* ---------- Elemente ---------- */
   var elToday = document.getElementById("today");
   var elKw = document.getElementById("kw");
   var elTag = document.getElementById("tag");
+  var elTagTitle = document.getElementById("h-tag");
   var elWoche = document.getElementById("woche");
   var elInfo = document.getElementById("wochenInfo");
   var elFehler = document.getElementById("fehler");
+  var elDatum = document.getElementById("datum");
+  var auftragEl = document.getElementById("auftrag");
+  var zeitEl = document.getElementById("zeit");
+  var speichernBtn = document.getElementById("speichern");
+  var abbrechenBtn = document.getElementById("abbrechen");
+  var formTitle = document.getElementById("h-erfassen");
+  var modusBtn = document.getElementById("modus");
+  var zahlenModus = true;
 
+  /* ---------- Darstellung ---------- */
   function renderHeader() {
     var now = new Date();
     elToday.textContent = fmtLong(now);
@@ -214,10 +263,11 @@
 
   function renderTag() {
     var list = load();
-    var today = dayKey(new Date());
-    var mine = list.filter(function (e) { return e.date === today; });
+    var isToday = selected === dayKey(new Date());
+    elTagTitle.textContent = isToday ? "Heute" : fmtDay(parseKey(selected));
+    var mine = list.filter(function (e) { return e.date === selected; });
     if (!mine.length) {
-      elTag.innerHTML = '<p class="empty">Heute noch keine Zeiten erfasst.</p>';
+      elTag.innerHTML = '<p class="empty">' + (isToday ? "Heute noch keine Zeiten erfasst." : "Für diesen Tag sind keine Zeiten erfasst.") + "</p>";
       return;
     }
     var sums = {}, order = [], total = 0;
@@ -231,7 +281,9 @@
     h += "</tbody><tfoot><tr><td>Summe</td><td>" + fmt(total) + "</td></tr></tfoot></table>";
     h += '<ul class="entries">';
     mine.forEach(function (e) {
-      h += "<li><span>" + esc(e.auftrag) + " · " + fmt(e.stunden) + '</span><button type="button" data-del="' + e.id + '" aria-label="Eintrag ' + esc(e.auftrag) + ' löschen">Löschen</button></li>';
+      h += "<li><span>" + esc(e.auftrag) + " · " + fmt(e.stunden) + '</span><span class="btns">' +
+        '<button type="button" data-edit="' + e.id + '" aria-label="Eintrag ' + esc(e.auftrag) + ' bearbeiten">Bearbeiten</button>' +
+        '<button type="button" data-del="' + e.id + '" aria-label="Eintrag ' + esc(e.auftrag) + ' löschen">Löschen</button></span></li>';
     });
     h += "</ul>";
     elTag.innerHTML = h;
@@ -239,16 +291,14 @@
 
   function renderWoche() {
     var list = load();
-    var base = mondayOf(new Date());
-    base.setDate(base.getDate() + weekOffset * 7);
+    var base = mondayOf(parseKey(selected));
     var days = [];
     for (var i = 0; i < 5; i++) {
-      var d = new Date(base.getFullYear(), base.getMonth(), base.getDate() + i);
-      days.push(d);
+      days.push(new Date(base.getFullYear(), base.getMonth(), base.getDate() + i));
     }
     var keys = days.map(dayKey);
     var info = isoWeek(days[0]);
-    elInfo.textContent = "KW " + info.week + " · " + fmtShort(days[0]) + " – " + fmtShort(days[4]) + days[4].getFullYear();
+    elInfo.textContent = "KW " + info.week + " · " + fmtShort(days[0]) + " – " + fmtShort(days[4]) + days[4].getFullYear() + " · Tippe auf einen Tag, um ihn zu öffnen";
 
     var rows = {}, order = [], dayTotals = [0, 0, 0, 0, 0], grand = 0;
     list.forEach(function (e) {
@@ -259,14 +309,18 @@
       dayTotals[idx] += e.stunden;
       grand += e.stunden;
     });
+    var todayKey = dayKey(new Date());
+    var head = "<thead><tr><th>Auftrag</th>";
+    TAGE.forEach(function (t, i) {
+      var cls = (keys[i] === todayKey ? "hl " : "") + (keys[i] === selected ? "sel" : "");
+      head += '<th class="' + cls + '" data-date="' + keys[i] + '" title="' + fmtShort(days[i]) + ' öffnen">' + t + "</th>";
+    });
+    head += "<th>Summe</th></tr></thead>";
     if (!order.length) {
-      elWoche.innerHTML = '<p class="empty">In dieser Woche gibt es keine Einträge.</p>';
+      elWoche.innerHTML = "<table>" + head + '</table><p class="empty" style="margin-top:10px">In dieser Woche gibt es keine Einträge.</p>';
       return;
     }
-    var todayKey = dayKey(new Date());
-    var h = "<table><thead><tr><th>Auftrag</th>";
-    TAGE.forEach(function (t, i) { h += '<th class="' + (keys[i] === todayKey ? "hl" : "") + '">' + t + "</th>"; });
-    h += "<th>Summe</th></tr></thead><tbody>";
+    var h = "<table>" + head + "<tbody>";
     order.forEach(function (a) {
       var sum = 0;
       h += "<tr><td>" + esc(a) + "</td>";
@@ -282,56 +336,15 @@
     elWoche.innerHTML = h;
   }
 
-  function renderAll() { renderHeader(); renderTag(); renderWoche(); }
-
-  /* ---------- Aktionen ---------- */
-  document.getElementById("speichern").addEventListener("click", function () {
-    var aEl = document.getElementById("auftrag");
-    var zEl = document.getElementById("zeit");
-    var a = aEl.value.trim();
-    var z = parseZeit(zEl.value);
-    if (!a) { elFehler.textContent = "Bitte einen Betriebsauftrag eingeben (bis zu 10 Zeichen)."; aEl.focus(); return; }
-    if (isNaN(z) || z <= 0) { elFehler.textContent = "Bitte die Zeit als Dezimalzahl eingeben, z. B. 1,5."; zEl.focus(); return; }
-    if (z > 24) { elFehler.textContent = "Eine Zeit über 24 Stunden ist nicht möglich."; zEl.focus(); return; }
-    elFehler.textContent = "";
-    var list = load();
-    list.push({ id: Date.now() + "-" + Math.floor(Math.random() * 1000), date: dayKey(new Date()), auftrag: a, stunden: z });
-    save(list);
-    aEl.value = ""; zEl.value = "";
-    aEl.focus();
-    weekOffset = 0;
-    renderAll();
-  });
-
-  document.getElementById("zeit").addEventListener("keydown", function (e) {
-    if (e.key === "Enter") document.getElementById("speichern").click();
-  });
-
-  elTag.addEventListener("click", function (e) {
-    var id = e.target.getAttribute && e.target.getAttribute("data-del");
-    if (!id) return;
-    save(load().filter(function (x) { return x.id !== id; }));
-    renderAll();
-  });
-
-  document.getElementById("prev").addEventListener("click", function () { weekOffset--; renderWoche(); });
-  document.getElementById("next").addEventListener("click", function () { weekOffset++; renderWoche(); });
-  document.getElementById("cur").addEventListener("click", function () { weekOffset = 0; renderWoche(); });
-
-  /* ---------- Automatische Aktualisierung des Datums ---------- */
-  function checkDay() {
-    if (dayKey(new Date()) !== lastDay) { weekOffset = 0; renderAll(); }
+  function renderAll() {
+    renderHeader();
+    renderTag();
+    renderWoche();
+    elDatum.value = selected;
   }
-  setInterval(checkDay, 60000);
-  document.addEventListener("visibilitychange", function () { if (!document.hidden) checkDay(); });
-  window.addEventListener("focus", checkDay);
 
-  /* ---------- Tastatur-Umschalter Betriebsauftrag ---------- */
-  var modusBtn = document.getElementById("modus");
-  var auftragEl = document.getElementById("auftrag");
-  var zahlenModus = true;
-  modusBtn.addEventListener("click", function () {
-    zahlenModus = !zahlenModus;
+  /* ---------- Formular ---------- */
+  function applyModus() {
     if (zahlenModus) {
       auftragEl.setAttribute("inputmode", "numeric");
       auftragEl.setAttribute("pattern", "[0-9]*");
@@ -345,10 +358,119 @@
       modusBtn.textContent = "123";
       modusBtn.setAttribute("aria-label", "Zur Zahlentastatur wechseln");
     }
+  }
+
+  function resetForm() {
+    editingId = null;
+    auftragEl.value = "";
+    zeitEl.value = "";
+    elFehler.textContent = "";
+    speichernBtn.textContent = "Speichern";
+    abbrechenBtn.hidden = true;
+    formTitle.textContent = "Zeit erfassen";
+  }
+
+  function startEdit(id) {
+    var entry = load().filter(function (x) { return x.id === id; })[0];
+    if (!entry) return;
+    editingId = id;
+    auftragEl.value = entry.auftrag;
+    zeitEl.value = String(entry.stunden).replace(".", ",");
+    zahlenModus = /^\d+$/.test(entry.auftrag);
+    applyModus();
+    elFehler.textContent = "";
+    speichernBtn.textContent = "Änderung speichern";
+    abbrechenBtn.hidden = false;
+    formTitle.textContent = "Eintrag bearbeiten";
+    formTitle.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  /* ---------- Aktionen ---------- */
+  speichernBtn.addEventListener("click", function () {
+    var a = auftragEl.value.trim();
+    var z = parseZeit(zeitEl.value);
+    var datum = /^\d{4}-\d{2}-\d{2}$/.test(elDatum.value) ? elDatum.value : selected;
+    if (!a) { elFehler.textContent = "Bitte einen Betriebsauftrag eingeben (bis zu 10 Zeichen)."; auftragEl.focus(); return; }
+    if (isNaN(z) || z <= 0) { elFehler.textContent = "Bitte die Zeit als Dezimalzahl eingeben, z. B. 1,5."; zeitEl.focus(); return; }
+    if (z > 24) { elFehler.textContent = "Eine Zeit über 24 Stunden ist nicht möglich."; zeitEl.focus(); return; }
+    var list = load();
+    var found = false;
+    if (editingId) {
+      list.forEach(function (x) {
+        if (x.id === editingId) { x.auftrag = a; x.stunden = z; x.date = datum; found = true; }
+      });
+    }
+    if (!found) {
+      list.push({ id: Date.now() + "-" + Math.floor(Math.random() * 1000), date: datum, auftrag: a, stunden: z });
+    }
+    save(list);
+    selected = datum;
+    resetForm();
+    renderAll();
+    auftragEl.focus();
+  });
+
+  abbrechenBtn.addEventListener("click", function () { resetForm(); });
+
+  zeitEl.addEventListener("keydown", function (e) {
+    if (e.key === "Enter") speichernBtn.click();
+  });
+
+  elDatum.addEventListener("change", function () {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(elDatum.value)) { selected = elDatum.value; renderAll(); }
+  });
+
+  elTag.addEventListener("click", function (e) {
+    var t = e.target;
+    if (!t.getAttribute) return;
+    var del = t.getAttribute("data-del");
+    var ed = t.getAttribute("data-edit");
+    if (del) {
+      save(load().filter(function (x) { return x.id !== del; }));
+      if (editingId === del) resetForm();
+      renderAll();
+    } else if (ed) {
+      startEdit(ed);
+    }
+  });
+
+  elWoche.addEventListener("click", function (e) {
+    var th = e.target.closest ? e.target.closest("[data-date]") : null;
+    if (!th) return;
+    selected = th.getAttribute("data-date");
+    renderAll();
+    elTagTitle.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+
+  function today() { return dayKey(new Date()); }
+  document.getElementById("dprev").addEventListener("click", function () { selected = shiftKey(selected, -1); renderAll(); });
+  document.getElementById("dnext").addEventListener("click", function () { selected = shiftKey(selected, 1); renderAll(); });
+  document.getElementById("dcur").addEventListener("click", function () { selected = today(); renderAll(); });
+  document.getElementById("prev").addEventListener("click", function () { selected = shiftKey(selected, -7); renderAll(); });
+  document.getElementById("next").addEventListener("click", function () { selected = shiftKey(selected, 7); renderAll(); });
+  document.getElementById("cur").addEventListener("click", function () { selected = today(); renderAll(); });
+
+  /* ---------- Tastatur-Umschalter Betriebsauftrag ---------- */
+  modusBtn.addEventListener("click", function () {
+    zahlenModus = !zahlenModus;
+    applyModus();
     auftragEl.blur();
     setTimeout(function () { auftragEl.focus(); }, 50);
   });
 
+  /* ---------- Automatische Aktualisierung des Datums ---------- */
+  function checkDay() {
+    var now = today();
+    if (now !== lastDay) {
+      if (selected === lastDay) selected = now;
+      renderAll();
+    }
+  }
+  setInterval(checkDay, 60000);
+  document.addEventListener("visibilitychange", function () { if (!document.hidden) checkDay(); });
+  window.addEventListener("focus", checkDay);
+
+  applyModus();
   renderAll();
 })();
 </script>
