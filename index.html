@@ -110,6 +110,11 @@
     color: var(--gold);
     font-weight: 600;
   }
+  .check { display: flex; align-items: center; gap: 10px; margin: 0 0 12px; font-size: 1rem; color: var(--ink); }
+  .check input { width: 26px; height: 26px; padding: 0; margin: 0; flex: none; accent-color: var(--accent); }
+  .wochebox { position: relative; min-height: 150px; }
+  .stempel { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; }
+  .stempel svg { height: 100%; max-height: 320px; width: auto; max-width: 100%; }
   [hidden] { display: none !important; }
   #abbrechen { width: 100%; margin-top: 8px; }
   .entries .btns { display: flex; gap: 6px; }
@@ -148,7 +153,13 @@
       </div>
     </div>
     <p class="sub" id="wochenInfo"></p>
-    <div class="scroll" id="woche"></div>
+    <label class="check"><input type="checkbox" id="wocheFertig"> Woche als eingegeben markieren</label>
+    <div class="wochebox">
+      <div class="scroll" id="woche"></div>
+      <div class="stempel" id="stempel" hidden aria-hidden="true">
+        <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><path d="M14 54 L38 78 L88 22" fill="none" stroke="rgba(228,70,70,0.42)" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+    </div>
   </section>
   <section aria-labelledby="h-erfassen">
     <h2 id="h-erfassen">Zeit erfassen</h2>
@@ -186,6 +197,14 @@
   }
   function save(list) {
     try { localStorage.setItem(KEY, JSON.stringify(list)); } catch (e) {}
+  }
+
+  var WKEY = "zeiterfassung.wochen.v1";
+  function loadWeeks() {
+    try { return JSON.parse(localStorage.getItem(WKEY)) || {}; } catch (e) { return {}; }
+  }
+  function saveWeeks(w) {
+    try { localStorage.setItem(WKEY, JSON.stringify(w)); } catch (e) {}
   }
 
   /* ---------- Datum ---------- */
@@ -252,6 +271,8 @@
   var formTitle = document.getElementById("h-erfassen");
   var modusBtn = document.getElementById("modus");
   var zahlenModus = true;
+  var elFertig = document.getElementById("wocheFertig");
+  var elStempel = document.getElementById("stempel");
 
   /* ---------- Darstellung ---------- */
   function renderHeader() {
@@ -292,6 +313,9 @@
   function renderWoche() {
     var list = load();
     var base = mondayOf(parseKey(selected));
+    var done = !!loadWeeks()[dayKey(base)];
+    elFertig.checked = done;
+    elStempel.hidden = !done;
     var days = [];
     for (var i = 0; i < 5; i++) {
       days.push(new Date(base.getFullYear(), base.getMonth(), base.getDate() + i));
@@ -440,6 +464,14 @@
     selected = th.getAttribute("data-date");
     renderAll();
     elTagTitle.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+
+  elFertig.addEventListener("change", function () {
+    var w = loadWeeks();
+    var k = dayKey(mondayOf(parseKey(selected)));
+    if (elFertig.checked) { w[k] = true; } else { delete w[k]; }
+    saveWeeks(w);
+    elStempel.hidden = !elFertig.checked;
   });
 
   function today() { return dayKey(new Date()); }
