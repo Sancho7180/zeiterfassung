@@ -120,6 +120,16 @@
   .kinfo { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 8px 0 10px; }
   .kinfo .sub { margin: 0; }
   .kinfo button { flex: none; padding: 4px 10px; font-size: .85rem; }
+  input:disabled { opacity: .55; }
+  .urlaubrow { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 8px; }
+  .urlaubrow label { margin: 0; font-size: 1rem; color: var(--ink); }
+  .urlaubrow input { width: 110px; text-align: right; }
+  #urlaubInfo:empty { display: none; }
+  .sichern { text-align: center; padding: 4px 0 8px; }
+  .sbtns { display: flex; gap: 10px; justify-content: center; }
+  .sbtns button { padding: 6px 16px; font-size: .9rem; }
+  .sichern .sub { margin: 8px 0 0; }
+  .sichern .sub:empty { display: none; }
   [hidden] { display: none !important; }
   #abbrechen { width: 100%; margin-top: 8px; }
   .entries .btns { display: flex; gap: 6px; }
@@ -135,6 +145,31 @@
     <div class="today" id="today"></div>
     <div class="kw" id="kw"></div>
   </header>
+
+  <section aria-labelledby="h-erfassen">
+    <h2 id="h-erfassen">Zeit erfassen</h2>
+    <div class="datefield">
+      <label for="datum">Datum</label>
+      <input id="datum" type="date">
+    </div>
+    <div class="row">
+      <label class="check"><input type="checkbox" id="cUrlaub"> Urlaub (8 Std)</label>
+      <label class="check"><input type="checkbox" id="cKrank"> Krank (8 Std)</label>
+    </div>
+    <div class="row">
+      <div>
+        <div class="lblrow"><label for="auftrag">Betriebsauftrag</label><button type="button" id="modus" aria-label="Zur Buchstabentastatur wechseln">ABC</button></div>
+        <input id="auftrag" type="text" maxlength="10" autocomplete="off" spellcheck="false" inputmode="numeric" pattern="[0-9]*" enterkeyhint="next">
+      </div>
+      <div>
+        <div class="lblrow"><label for="zeit">Zeit (dezimal)</label></div>
+        <input id="zeit" type="text" inputmode="decimal" pattern="[0-9]*[.,]?[0-9]*" autocomplete="off" placeholder="z. B. 1,5" enterkeyhint="done">
+      </div>
+    </div>
+    <button class="primary" id="speichern" type="button">Speichern</button>
+    <button id="abbrechen" type="button" hidden>Abbrechen</button>
+    <p class="error" id="fehler" role="alert"></p>
+  </section>
 
   <section aria-labelledby="h-tag">
     <div class="weeknav">
@@ -169,6 +204,11 @@
       </div>
     </div>
     <div class="kinfo"><p class="sub" id="kontoInfo"></p><button type="button" id="kReset" hidden>Automatisch</button></div>
+    <div class="urlaubrow">
+      <label for="urlaub">Urlaubstage (Rest)</label>
+      <input id="urlaub" type="text" inputmode="decimal" autocomplete="off" placeholder="–">
+    </div>
+    <p class="sub" id="urlaubInfo" role="status"></p>
     <label class="check"><input type="checkbox" id="wocheFertig"> Woche als eingegeben markieren</label>
     <div class="wochebox">
       <div class="scroll" id="woche"></div>
@@ -177,26 +217,14 @@
       </div>
     </div>
   </section>
-  <section aria-labelledby="h-erfassen">
-    <h2 id="h-erfassen">Zeit erfassen</h2>
-    <div class="datefield">
-      <label for="datum">Datum</label>
-      <input id="datum" type="date">
+  <footer class="sichern">
+    <div class="sbtns">
+      <button type="button" id="exportBtn">Export</button>
+      <button type="button" id="importBtn">Import</button>
     </div>
-    <div class="row">
-      <div>
-        <div class="lblrow"><label for="auftrag">Betriebsauftrag</label><button type="button" id="modus" aria-label="Zur Buchstabentastatur wechseln">ABC</button></div>
-        <input id="auftrag" type="text" maxlength="10" autocomplete="off" spellcheck="false" inputmode="numeric" pattern="[0-9]*" enterkeyhint="next">
-      </div>
-      <div>
-        <div class="lblrow"><label for="zeit">Zeit (dezimal)</label></div>
-        <input id="zeit" type="text" inputmode="decimal" pattern="[0-9]*[.,]?[0-9]*" autocomplete="off" placeholder="z. B. 1,5" enterkeyhint="done">
-      </div>
-    </div>
-    <button class="primary" id="speichern" type="button">Speichern</button>
-    <button id="abbrechen" type="button" hidden>Abbrechen</button>
-    <p class="error" id="fehler" role="alert"></p>
-  </section>
+    <input id="importFile" type="file" accept="application/json,.json" hidden>
+    <p class="sub" id="sichStatus" role="status"></p>
+  </footer>
 </main>
 
 <script>
@@ -222,6 +250,24 @@
   }
   function saveKonto(c) {
     try { localStorage.setItem(CKEY, JSON.stringify(c)); } catch (e) {}
+  }
+  var UKEY = "zeiterfassung.urlaub.v1";
+  function loadUrlaub() {
+    try {
+      var o = JSON.parse(localStorage.getItem(UKEY));
+      return (o && typeof o.rest === "number" && isFinite(o.rest)) ? o.rest : null;
+    } catch (e) { return null; }
+  }
+  function saveUrlaub(n) {
+    try {
+      if (n === null) localStorage.removeItem(UKEY);
+      else localStorage.setItem(UKEY, JSON.stringify({ rest: n }));
+    } catch (e) {}
+  }
+  function adjustUrlaub(delta) {
+    var r = loadUrlaub();
+    if (r === null) return;
+    saveUrlaub(round2(r + delta));
   }
   var WKEY = "zeiterfassung.wochen.v1";
   function loadWeeks() {
@@ -301,6 +347,14 @@
   var elKInfo = document.getElementById("kontoInfo");
   var elFertig = document.getElementById("wocheFertig");
   var elStempel = document.getElementById("stempel");
+  var cUrlaub = document.getElementById("cUrlaub");
+  var cKrank = document.getElementById("cKrank");
+  var elUrlaub = document.getElementById("urlaub");
+  var elUrlaubInfo = document.getElementById("urlaubInfo");
+  var exportBtn = document.getElementById("exportBtn");
+  var importBtn = document.getElementById("importBtn");
+  var importFile = document.getElementById("importFile");
+  var elStatus = document.getElementById("sichStatus");
 
   /* ---------- Darstellung ---------- */
   function renderHeader() {
@@ -475,11 +529,21 @@
     renderKonto();
   }
 
+  function restStr(n) { return String(n).replace(".", ","); }
+  function renderUrlaub() {
+    var r = loadUrlaub();
+    if (document.activeElement !== elUrlaub) elUrlaub.value = r === null ? "" : restStr(r);
+    elUrlaubInfo.textContent = r === null
+      ? "Resturlaub eintragen, dann verringert er sich bei jedem Urlaubs-Eintrag automatisch um 1 Tag."
+      : "";
+  }
+
   function renderAll() {
     renderHeader();
     renderTag();
     renderWoche();
     renderKonto();
+    renderUrlaub();
     elDatum.value = selected;
   }
 
@@ -500,8 +564,29 @@
     }
   }
 
+  function currentTyp() {
+    return cUrlaub.checked ? "urlaub" : (cKrank.checked ? "krank" : null);
+  }
+  function updateTypUI(prevSpecial) {
+    var typ = currentTyp();
+    var special = !!typ;
+    auftragEl.disabled = special;
+    zeitEl.disabled = special;
+    modusBtn.disabled = special;
+    if (special) {
+      auftragEl.value = typ === "urlaub" ? "Urlaub" : "Krank";
+      zeitEl.value = String(SOLL).replace(".", ",") + ",00";
+    } else if (prevSpecial) {
+      auftragEl.value = "";
+      zeitEl.value = "";
+    }
+  }
+
   function resetForm() {
     editingId = null;
+    cUrlaub.checked = false;
+    cKrank.checked = false;
+    updateTypUI(false);
     auftragEl.value = "";
     zeitEl.value = "";
     elFehler.textContent = "";
@@ -516,8 +601,13 @@
     editingId = id;
     auftragEl.value = entry.auftrag;
     zeitEl.value = String(entry.stunden).replace(".", ",");
-    zahlenModus = /^\d+$/.test(entry.auftrag);
-    applyModus();
+    cUrlaub.checked = entry.typ === "urlaub";
+    cKrank.checked = entry.typ === "krank";
+    if (!entry.typ) {
+      zahlenModus = /^\d+$/.test(entry.auftrag);
+      applyModus();
+    }
+    updateTypUI(false);
     elFehler.textContent = "";
     speichernBtn.textContent = "Änderung speichern";
     abbrechenBtn.hidden = false;
@@ -527,27 +617,64 @@
 
   /* ---------- Aktionen ---------- */
   speichernBtn.addEventListener("click", function () {
-    var a = auftragEl.value.trim();
-    var z = parseZeit(zeitEl.value);
+    var typ = currentTyp();
     var datum = /^\d{4}-\d{2}-\d{2}$/.test(elDatum.value) ? elDatum.value : selected;
-    if (!a) { elFehler.textContent = "Bitte einen Betriebsauftrag eingeben (bis zu 10 Zeichen)."; auftragEl.focus(); return; }
-    if (isNaN(z) || z <= 0) { elFehler.textContent = "Bitte die Zeit als Dezimalzahl eingeben, z. B. 1,5."; zeitEl.focus(); return; }
-    if (z > 24) { elFehler.textContent = "Eine Zeit über 24 Stunden ist nicht möglich."; zeitEl.focus(); return; }
+    var a, z;
+    if (typ) {
+      var wdTag = parseKey(datum).getDay();
+      if (wdTag === 0 || wdTag === 6) {
+        elFehler.textContent = "Urlaub und Krank können nur an Werktagen (Mo\u2013Fr) eingetragen werden.";
+        return;
+      }
+      a = typ === "urlaub" ? "Urlaub" : "Krank";
+      z = SOLL;
+    } else {
+      a = auftragEl.value.trim();
+      z = parseZeit(zeitEl.value);
+      if (!a) { elFehler.textContent = "Bitte einen Betriebsauftrag eingeben (bis zu 10 Zeichen)."; auftragEl.focus(); return; }
+      if (isNaN(z) || z <= 0) { elFehler.textContent = "Bitte die Zeit als Dezimalzahl eingeben, z. B. 1,5."; zeitEl.focus(); return; }
+      if (z > 24) { elFehler.textContent = "Eine Zeit über 24 Stunden ist nicht möglich."; zeitEl.focus(); return; }
+    }
     var list = load();
+    if (typ) {
+      var dupe = list.some(function (x) { return x.date === datum && x.typ && x.id !== editingId; });
+      if (dupe) { elFehler.textContent = "Für diesen Tag ist bereits Urlaub oder Krank eingetragen."; return; }
+    }
     var found = false;
+    var oldTyp = null;
     if (editingId) {
       list.forEach(function (x) {
-        if (x.id === editingId) { x.auftrag = a; x.stunden = z; x.date = datum; found = true; }
+        if (x.id === editingId) {
+          oldTyp = x.typ || null;
+          x.auftrag = a; x.stunden = z; x.date = datum;
+          if (typ) { x.typ = typ; } else { delete x.typ; }
+          found = true;
+        }
       });
     }
     if (!found) {
-      list.push({ id: Date.now() + "-" + Math.floor(Math.random() * 1000), date: datum, auftrag: a, stunden: z });
+      var neu = { id: Date.now() + "-" + Math.floor(Math.random() * 1000), date: datum, auftrag: a, stunden: z };
+      if (typ) neu.typ = typ;
+      list.push(neu);
     }
+    var delta = (typ === "urlaub" ? 1 : 0) - (oldTyp === "urlaub" ? 1 : 0);
+    if (delta) adjustUrlaub(-delta);
     save(list);
     selected = datum;
     resetForm();
     renderAll();
-    auftragEl.focus();
+    if (!typ) auftragEl.focus();
+  });
+
+  cUrlaub.addEventListener("change", function () {
+    var was = auftragEl.disabled;
+    if (cUrlaub.checked) cKrank.checked = false;
+    updateTypUI(was);
+  });
+  cKrank.addEventListener("change", function () {
+    var was = auftragEl.disabled;
+    if (cKrank.checked) cUrlaub.checked = false;
+    updateTypUI(was);
   });
 
   abbrechenBtn.addEventListener("click", function () { resetForm(); });
@@ -566,7 +693,10 @@
     var del = t.getAttribute("data-del");
     var ed = t.getAttribute("data-edit");
     if (del) {
-      save(load().filter(function (x) { return x.id !== del; }));
+      var all = load();
+      var gone = all.filter(function (x) { return x.id === del; })[0];
+      if (gone && gone.typ === "urlaub") adjustUrlaub(1);
+      save(all.filter(function (x) { return x.id !== del; }));
       if (editingId === del) resetForm();
       renderAll();
     } else if (ed) {
@@ -619,6 +749,141 @@
     applyModus();
     auftragEl.blur();
     setTimeout(function () { auftragEl.focus(); }, 50);
+  });
+
+  /* ---------- Urlaubstage ---------- */
+  elUrlaub.addEventListener("change", function () {
+    var t = elUrlaub.value.trim();
+    if (t === "") {
+      saveUrlaub(null);
+    } else {
+      var v = parseZeit(t);
+      if (isNaN(v)) {
+        renderUrlaub();
+        elUrlaubInfo.textContent = "Bitte die Urlaubstage als Zahl eingeben, z. B. 24 oder 12,5.";
+        return;
+      }
+      saveUrlaub(round2(v));
+    }
+    renderUrlaub();
+  });
+  elUrlaub.addEventListener("keydown", function (e) {
+    if (e.key === "Enter") elUrlaub.blur();
+  });
+
+  /* ---------- Sicherung: Export / Import ---------- */
+  function setStatus(msg) { elStatus.textContent = msg; }
+  function isKey(k) { return typeof k === "string" && /^\d{4}-\d{2}-\d{2}$/.test(k); }
+
+  function buildBackup() {
+    return {
+      app: "zeiterfassung",
+      version: 1,
+      exportiert: new Date().toISOString(),
+      eintraege: load(),
+      wochen: loadWeeks(),
+      konto: loadKonto(),
+      urlaubRest: loadUrlaub()
+    };
+  }
+
+  function downloadBackup(json, name) {
+    var blob = new Blob([json], { type: "application/json" });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+    setStatus("Sicherung \u201e" + name + "\u201c wurde erstellt.");
+  }
+
+  exportBtn.addEventListener("click", function () {
+    var json = JSON.stringify(buildBackup(), null, 1);
+    var name = "zeiterfassung-" + today() + ".json";
+    var file = null;
+    try { file = new File([json], name, { type: "application/json" }); } catch (e) { file = null; }
+    if (file && navigator.canShare && navigator.share && navigator.canShare({ files: [file] })) {
+      navigator.share({ files: [file], title: "Zeiterfassung Sicherung" }).then(function () {
+        setStatus("Sicherung wurde weitergegeben.");
+      }).catch(function (err) {
+        if (err && err.name === "AbortError") { setStatus("Export abgebrochen."); }
+        else { downloadBackup(json, name); }
+      });
+    } else {
+      downloadBackup(json, name);
+    }
+  });
+
+  function sanitizeBackup(o) {
+    if (!o || typeof o !== "object" || o.app !== "zeiterfassung" || !Array.isArray(o.eintraege)) return null;
+    var seen = {}, out = [], skipped = 0;
+    o.eintraege.forEach(function (x) {
+      var st = x ? Number(x.stunden) : NaN;
+      if (!x || !isKey(x.date) || typeof x.auftrag !== "string" || !x.auftrag.trim() || !isFinite(st) || st <= 0 || st > 24) {
+        skipped++;
+        return;
+      }
+      var id = (typeof x.id === "string" && /^[\w.\-]{1,40}$/.test(x.id) && !seen[x.id])
+        ? x.id
+        : Date.now() + "-" + Math.floor(Math.random() * 1000000);
+      seen[id] = true;
+      var e = { id: id, date: x.date, auftrag: x.auftrag.trim().slice(0, 40), stunden: round2(st) };
+      if (x.typ === "urlaub" || x.typ === "krank") e.typ = x.typ;
+      out.push(e);
+    });
+    var wochen = {};
+    if (o.wochen && typeof o.wochen === "object") {
+      Object.keys(o.wochen).forEach(function (k) { if (isKey(k) && o.wochen[k] === true) wochen[k] = true; });
+    }
+    var konto = null;
+    var c = o.konto;
+    if (c && typeof c === "object" && isKey(c.startDate) && isFinite(Number(c.startSaldo))) {
+      konto = { startDate: c.startDate, startSaldo: round2(Number(c.startSaldo)), overrides: {} };
+      if (c.overrides && typeof c.overrides === "object") {
+        Object.keys(c.overrides).forEach(function (k) {
+          var v = Number(c.overrides[k]);
+          if (isKey(k) && isFinite(v)) konto.overrides[k] = round2(v);
+        });
+      }
+    }
+    var ur = (typeof o.urlaubRest === "number" && isFinite(o.urlaubRest)) ? round2(o.urlaubRest) : null;
+    return { eintraege: out, skipped: skipped, wochen: wochen, konto: konto, urlaubRest: ur };
+  }
+
+  importBtn.addEventListener("click", function () {
+    importFile.value = "";
+    importFile.click();
+  });
+
+  importFile.addEventListener("change", function () {
+    var f = importFile.files && importFile.files[0];
+    if (!f) return;
+    if (f.size > 5 * 1024 * 1024) { setStatus("Die Datei ist zu groß für eine Sicherung."); return; }
+    var rd = new FileReader();
+    rd.onerror = function () { setStatus("Die Datei konnte nicht gelesen werden."); };
+    rd.onload = function () {
+      importFile.value = "";
+      var data = null;
+      try { data = sanitizeBackup(JSON.parse(rd.result)); } catch (e) { data = null; }
+      if (!data) { setStatus("Diese Datei ist keine gültige Sicherung der Zeiterfassung."); return; }
+      var n = data.eintraege.length;
+      var msg = (n === 1 ? "1 Eintrag gefunden." : n + " Einträge gefunden.") +
+        (data.skipped ? " " + data.skipped + " ungültige Einträge werden übersprungen." : "") +
+        " Die aktuellen Daten in der App werden dadurch ersetzt. Fortfahren?";
+      if (!window.confirm(msg)) { setStatus("Import abgebrochen."); return; }
+      save(data.eintraege);
+      saveWeeks(data.wochen);
+      if (data.konto) { saveKonto(data.konto); } else { try { localStorage.removeItem(CKEY); } catch (e) {} }
+      saveUrlaub(data.urlaubRest);
+      resetForm();
+      selected = today();
+      renderAll();
+      setStatus(n === 1 ? "1 Eintrag wurde importiert." : n + " Einträge wurden importiert.");
+    };
+    rd.readAsText(f);
   });
 
   /* ---------- Automatische Aktualisierung des Datums ---------- */
