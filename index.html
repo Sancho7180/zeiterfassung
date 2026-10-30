@@ -77,9 +77,9 @@
     font-weight: 600;
     padding: 12px;
   }
-  .lblrow { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
-  .lblrow label { margin: 0; }
-  .lblrow button { padding: 2px 12px; font-size: .85rem; }
+  .lblrow { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; min-height: 34px; }
+  .lblrow label { margin: 0; white-space: nowrap; }
+  .lblrow button { padding: 2px 10px; font-size: .85rem; }
   .error { color: var(--warn); min-height: 1.4em; margin: 8px 0 0; font-size: .9rem; }
   table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
   th, td { padding: 8px 6px; text-align: right; border-bottom: 1px solid var(--line); }
@@ -115,6 +115,11 @@
   .wochebox { position: relative; min-height: 150px; }
   .stempel { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; }
   .stempel svg { height: 100%; max-height: 320px; width: auto; max-width: 100%; }
+  .kout { background: transparent; color: var(--ink); font-weight: 700; cursor: default; }
+  .kout.neg { color: var(--warn); }
+  .kinfo { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 8px 0 10px; }
+  .kinfo .sub { margin: 0; }
+  .kinfo button { flex: none; padding: 4px 10px; font-size: .85rem; }
   [hidden] { display: none !important; }
   #abbrechen { width: 100%; margin-top: 8px; }
   .entries .btns { display: flex; gap: 6px; }
@@ -153,6 +158,17 @@
       </div>
     </div>
     <p class="sub" id="wochenInfo"></p>
+    <div class="row">
+      <div>
+        <div class="lblrow"><label for="kAnfang">Stand Beginn</label><button type="button" id="kSign" aria-label="Vorzeichen wechseln">±</button></div>
+        <input id="kAnfang" type="text" inputmode="decimal" autocomplete="off" placeholder="–">
+      </div>
+      <div>
+        <div class="lblrow"><label for="kEnde">Stand Ende</label></div>
+        <input id="kEnde" class="kout" type="text" readonly tabindex="-1" inputmode="none" value="–">
+      </div>
+    </div>
+    <div class="kinfo"><p class="sub" id="kontoInfo"></p><button type="button" id="kReset" hidden>Automatisch</button></div>
     <label class="check"><input type="checkbox" id="wocheFertig"> Woche als eingegeben markieren</label>
     <div class="wochebox">
       <div class="scroll" id="woche"></div>
@@ -173,7 +189,7 @@
         <input id="auftrag" type="text" maxlength="10" autocomplete="off" spellcheck="false" inputmode="numeric" pattern="[0-9]*" enterkeyhint="next">
       </div>
       <div>
-        <label for="zeit">Zeit (dezimal)</label>
+        <div class="lblrow"><label for="zeit">Zeit (dezimal)</label></div>
         <input id="zeit" type="text" inputmode="decimal" pattern="[0-9]*[.,]?[0-9]*" autocomplete="off" placeholder="z. B. 1,5" enterkeyhint="done">
       </div>
     </div>
@@ -199,6 +215,14 @@
     try { localStorage.setItem(KEY, JSON.stringify(list)); } catch (e) {}
   }
 
+  var SOLL = 8;
+  var CKEY = "zeiterfassung.konto.v1";
+  function loadKonto() {
+    try { return JSON.parse(localStorage.getItem(CKEY)) || null; } catch (e) { return null; }
+  }
+  function saveKonto(c) {
+    try { localStorage.setItem(CKEY, JSON.stringify(c)); } catch (e) {}
+  }
   var WKEY = "zeiterfassung.wochen.v1";
   function loadWeeks() {
     try { return JSON.parse(localStorage.getItem(WKEY)) || {}; } catch (e) { return {}; }
@@ -271,6 +295,10 @@
   var formTitle = document.getElementById("h-erfassen");
   var modusBtn = document.getElementById("modus");
   var zahlenModus = true;
+  var elKAnfang = document.getElementById("kAnfang");
+  var elKReset = document.getElementById("kReset");
+  var elKEnde = document.getElementById("kEnde");
+  var elKInfo = document.getElementById("kontoInfo");
   var elFertig = document.getElementById("wocheFertig");
   var elStempel = document.getElementById("stempel");
 
@@ -360,10 +388,98 @@
     elWoche.innerHTML = h;
   }
 
+  function round2(x) { return Math.round(x * 100) / 100; }
+  function fmtS(n) {
+    var r = round2(n);
+    return (r < 0 ? "\u2212" : (r > 0 ? "+" : "")) + fmt(Math.abs(r)) + " Std";
+  }
+  function parseSigned(str) {
+    var t = String(str).trim().replace("\u2212", "-").replace(",", ".");
+    if (!/^[-+]?\d+(\.\d+)?$/.test(t)) return NaN;
+    return parseFloat(t);
+  }
+  function saldoFor(target, cfg) {
+    if (target < cfg.startDate) return null;
+    var totals = {};
+    load().forEach(function (e) { totals[e.date] = (totals[e.date] || 0) + e.stunden; });
+    var bal = cfg.startSaldo;
+    var d = parseKey(cfg.startDate);
+    for (var guard = 0; guard < 20000; guard++) {
+      var key = dayKey(d);
+      var wd = d.getDay();
+      var soll = (wd >= 1 && wd <= 5) ? SOLL : 0;
+      var ov = cfg.overrides && Object.prototype.hasOwnProperty.call(cfg.overrides, key);
+      var anfang = ov ? round2(cfg.overrides[key]) : round2(bal - soll);
+      var ende = round2(anfang + (totals[key] || 0));
+      bal = ende;
+      if (key === target) return { anfang: anfang, ende: ende, soll: soll, overridden: !!ov };
+      d.setDate(d.getDate() + 1);
+    }
+    return null;
+  }
+  function numStr(n) { return round2(n).toFixed(2).replace(".", ","); }
+  function setKV(el, val) {
+    el.value = val === null ? "\u2013" : fmtS(val);
+    el.className = "kout" + (val !== null && round2(val) < 0 ? " neg" : "");
+  }
+  function renderKonto() {
+    var cfg = loadKonto();
+    var r = (cfg && cfg.startDate) ? saldoFor(selected, cfg) : null;
+    if (document.activeElement !== elKAnfang) elKAnfang.value = r ? numStr(r.anfang) : "";
+    elKReset.hidden = !(r && r.overridden);
+    setKV(elKEnde, r ? r.ende : null);
+    if (!cfg || !cfg.startDate) {
+      elKInfo.textContent = "Trage links den Stand zu Beginn ein, dann wird ab diesem Tag gerechnet.";
+      return;
+    }
+    if (!r) {
+      elKInfo.textContent = "Vor dem " + parseKey(cfg.startDate).toLocaleDateString("de-DE") + " wird nicht gerechnet. Du kannst links trotzdem einen Wert eintragen.";
+      return;
+    }
+    elKInfo.textContent = fmtDay(parseKey(selected)) +
+      (r.soll ? " \u00b7 Soll " + SOLL + " Std" : " \u00b7 Wochenende, kein Soll") +
+      (r.overridden ? " \u00b7 manuell angepasst" : "");
+  }
+  function commitAnfang() {
+    var txt = elKAnfang.value.trim();
+    var cfg = loadKonto() || {};
+    cfg.overrides = cfg.overrides || {};
+    if (txt === "") {
+      if (!cfg.startDate) { renderKonto(); return; }
+      delete cfg.overrides[selected];
+      saveKonto(cfg);
+      renderKonto();
+      return;
+    }
+    var v = parseSigned(txt);
+    if (isNaN(v)) {
+      renderKonto();
+      elKInfo.textContent = "Bitte den Wert als Dezimalzahl eingeben, z. B. -14,5.";
+      return;
+    }
+    v = round2(v);
+    if (!cfg.startDate) {
+      cfg.startDate = selected;
+      cfg.startSaldo = 0;
+    } else if (selected < cfg.startDate) {
+      var od = parseKey(cfg.startDate).getDay();
+      var oldSoll = (od >= 1 && od <= 5) ? SOLL : 0;
+      if (!Object.prototype.hasOwnProperty.call(cfg.overrides, cfg.startDate)) {
+        cfg.overrides[cfg.startDate] = round2(cfg.startSaldo - oldSoll);
+      }
+      cfg.startDate = selected;
+      cfg.startSaldo = 0;
+    }
+    cfg.overrides[selected] = v;
+    saveKonto(cfg);
+    renderKonto();
+  }
+
   function renderAll() {
     renderHeader();
     renderTag();
     renderWoche();
+    renderKonto();
     elDatum.value = selected;
   }
 
@@ -472,6 +588,21 @@
     if (elFertig.checked) { w[k] = true; } else { delete w[k]; }
     saveWeeks(w);
     elStempel.hidden = !elFertig.checked;
+  });
+
+  elKAnfang.addEventListener("change", commitAnfang);
+  elKAnfang.addEventListener("keydown", function (e) {
+    if (e.key === "Enter") elKAnfang.blur();
+  });
+  document.getElementById("kSign").addEventListener("click", function () {
+    var v = elKAnfang.value.trim().replace("−", "-");
+    if (!v) return;
+    elKAnfang.value = v.charAt(0) === "-" ? v.slice(1) : "-" + v;
+    commitAnfang();
+  });
+  elKReset.addEventListener("click", function () {
+    elKAnfang.value = "";
+    commitAnfang();
   });
 
   function today() { return dayKey(new Date()); }
