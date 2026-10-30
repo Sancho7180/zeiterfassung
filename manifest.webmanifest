@@ -1,0 +1,23 @@
+{
+  "name": "Zeiterfassung",
+  "short_name": "Zeiterfassung",
+  "description": "Zeiterfassung mit Tages- und Wochenübersicht, Zeitkonto und Urlaub",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "lang": "de",
+  "background_color": "#cdd9e5",
+  "theme_color": "#cdd9e5",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
