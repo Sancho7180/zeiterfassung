@@ -145,6 +145,13 @@
   #abbrechen { width: 100%; margin-top: 8px; }
   .entries .btns { display: flex; gap: 6px; }
   .entries button[data-edit] { color: var(--ink); }
+  #woche th:first-child, #woche td:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    background: var(--surface);
+    box-shadow: 1px 0 0 var(--line);
+  }
   th[data-date] { cursor: pointer; }
   th.sel { box-shadow: inset 0 -3px 0 var(--accent); }
   .hl { background: color-mix(in srgb, var(--accent) 14%, transparent); }
